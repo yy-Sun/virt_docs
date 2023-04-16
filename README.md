@@ -1,2 +1,6 @@
-# virt_docs
-virtual docs
+# 虚拟化相关文档
+> 用来记录学习过程中虚拟化相关的文档。
+
+
+
+预计会包含 `kvm`, `qemu`, `virtio`, `vfio`，内核驱动等相关特性。
