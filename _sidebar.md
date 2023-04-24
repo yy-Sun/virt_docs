@@ -1,3 +1,5 @@
 * KVM
-  * [kvmtool开源项目学习](kvm/kvmtool)
+  * [kvmtool](kvm/kvmtool/index)
+    * [kvmtool编译](kvm/kvmtool/build)
+    * [rootfs文件系统](kvm/kvmtool/rootfs)
   * [kvm api](kvm/kvmapi)
