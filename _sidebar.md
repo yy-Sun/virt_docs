@@ -11,6 +11,9 @@
       * [实时时钟RTC]()
     * [内部软件中断]()
 
+* QEMU
+  * [qemu编译](qemu/compile)
+
 * KVM
   * [kvmtool](kvm/kvmtool/index)
     * [kvmtool编译](kvm/kvmtool/build)
