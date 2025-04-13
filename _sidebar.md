@@ -12,7 +12,9 @@
     * [内部软件中断]()
 
 * QEMU
-  * [qemu编译](qemu/compile)
+  * [qemu编译](qemu/qemu-compile)
+  * [libvirt编译](qemu/libvirt-compile)
+  * [如何订阅qemu邮件](qemu/subscribe)
 
 * KVM
   * [kvmtool](kvm/kvmtool/index)
