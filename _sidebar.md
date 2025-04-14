@@ -21,3 +21,6 @@
     * [kvmtool编译](kvm/kvmtool/build)
     * [rootfs文件系统](kvm/kvmtool/rootfs)
   * [kvm api](kvm/kvmapi)
+
+* 快捷键
+  * [windows](hot-key/windows)
