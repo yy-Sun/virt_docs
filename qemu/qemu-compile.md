@@ -31,18 +31,22 @@ index c3e356d42f..2e136e527d 100644
 
 `./configure --help` 查看配置文件
 
-这里以 qemu 9.0 为例：
+这里以 qemu 10.0 为例：
 
 ```bash
+# 1、安装依赖
+yum install liburing-devel libaio-devel ninja-build glib2-devel pixman-devel spice-server-devel
+
 ./configure  --target-list="x86_64-softmmu" \
   --enable-kvm \
   --disable-gcov \
   --disable-tsan \
   --with-coroutine=ucontext \
-  --without-default-features \
   --enable-vmdk \
   --enable-linux-aio \
   --enable-linux-io-uring \
+  --enable-vnc \
+  --enable-spice --enable-pixman \
   --enable-debug
 ```
 

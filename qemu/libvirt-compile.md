@@ -24,13 +24,16 @@ meson configure
 ### 1.4 configure
 
 ```bash
+# 1、安装依赖
+yun install -y libtirpc-devel meson gnutls-devel libxml2-devel json-c-devel libnl3-devel
+
+# 2、执行配置
 meson setup build -Dsystem=true \
   -Ddriver_qemu=enabled \
-  -Dyajl=enabled \
   -Ddriver_remote=enabled \
   -Ddriver_vmware=disabled \
   -Ddocs=disabled \
-  -Ddriver_lxc=enabled \
+  -Ddriver_lxc=disabled \
   -Ddriver_libvirtd=enabled \
   -Ddriver_vbox=disabled \
   -Dselinux=disabled
@@ -57,15 +60,6 @@ ninja -C build install
 
 ### 3.1 启动 libvirt
 
-```bash
- ./libvirtd --listen
-2024-03-30 20:47:09.812+0000: 204087: info : libvirt version: 10.2.0
-2024-03-30 20:47:09.812+0000: 204087: info : hostname: 192.168.182.131
-2024-03-30 20:47:09.812+0000: 204087: error : 
-virNetTLSContextCheckCertFile:105 : Cannot read CA certificate '/etc/pki/CA/cacert.pem':
-No such file or directory
-```
-
 ?> libvirt 默认开启 tls 加密连接，需要配置服务端证书，如果不想开启 tls，可以修改配置文件
 
 
@@ -73,9 +67,13 @@ No such file or directory
 
 ```conf
 listen_tls = 0
-
 listen_tcp = 1
 ```
+```bash
+./build/src/virtlogd -d
+./build/src/libvirtd -l -d
+```
+
 ### 3.2 防火墙
 
 建议把 防火墙也关闭了。
