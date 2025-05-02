@@ -7,6 +7,12 @@ yum install -y perl-Mail*
 
 ## 二、准备 patch 文件
 
+```bash
+git format-patch -2 --cover-letter -v2
+```
+
+
+
 ## 三、邮箱开启 `smtp` 服务，获取 smtp 授权密码
 
 配置 git config
@@ -25,5 +31,11 @@ git config --global sendemail.smtpencryption ssl
 
 ```bash
 git send-email --to=qemu-devel@nongnu.org /home/your.patch
+```
+
+## 五、回复邮件
+
+```bash
+sed -i -e 's/^/> /g' reply.patch
 ```
 
