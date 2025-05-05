@@ -16,7 +16,8 @@
   * [libvirt编译](qemu/libvirt-compile)
   * [如何订阅qemu邮件](qemu/subscribe)
   * [如何向qemu 发送 patch](qemu/send-email)
-  * [qemu 测试框架](qemu/test)
+  * [qemu 测试框架](qemu/test/index)
+    * [iotest](qemu/test/iotest)
 
 * KVM
   * [kvmtool](kvm/kvmtool/index)
