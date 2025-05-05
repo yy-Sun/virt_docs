@@ -19,6 +19,8 @@
   * [qemu 测试框架](qemu/test/index)
     * [iotest](qemu/test/iotest)
 
+* [dot2ascii流程图工具](dot2ascii)
+  
 * KVM
   * [kvmtool](kvm/kvmtool/index)
     * [kvmtool编译](kvm/kvmtool/build)
