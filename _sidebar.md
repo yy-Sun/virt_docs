@@ -18,6 +18,7 @@
   * [如何向qemu 发送 patch](qemu/send-email)
   * [qemu 测试框架](qemu/test/index)
     * [iotest](qemu/test/iotest)
+  * [qemu块层](qemu/block-layer/index)
 
 * [dot2ascii流程图工具](dot2ascii)
   
