@@ -19,6 +19,9 @@
   * [qemu 测试框架](qemu/test/index)
     * [iotest](qemu/test/iotest)
   * [qemu块层](qemu/block-layer/index)
+    * [bds](qemu/block-layer/bds) 
+    * [child](qemu/block-layer/child) 
+    * [blk](qemu/block-layer/blk) 
 
 * [dot2ascii流程图工具](dot2ascii)
   
