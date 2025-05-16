@@ -16,13 +16,14 @@
   * [libvirt编译](qemu/libvirt-compile)
   * [如何订阅qemu邮件](qemu/subscribe)
   * [如何向qemu 发送 patch](qemu/send-email)
+  * [opts](qemu/opts)
   * [qemu 测试框架](qemu/test/index)
     * [iotest](qemu/test/iotest)
   * [qemu块层](qemu/block-layer/index)
     * [bds](qemu/block-layer/bds) 
     * [child](qemu/block-layer/child) 
     * [blk](qemu/block-layer/blk) 
-
+  
 * [dot2ascii流程图工具](dot2ascii)
   
 * KVM
