@@ -23,6 +23,7 @@
     * [bds](qemu/block-layer/bds) 
     * [child](qemu/block-layer/child) 
     * [blk](qemu/block-layer/blk) 
+  * [block-job](qemu/block-job/job)
   
 * [dot2ascii流程图工具](dot2ascii)
   

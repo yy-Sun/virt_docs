@@ -39,20 +39,24 @@ drive_new();
 
 ## 三、BDS 相关 API
 
-### 1、`graph_bdrv_states` 全局链表 API
+### 1、全局链表 
 
 ```c
 /* Protected by BQL */
 static QTAILQ_HEAD(, BlockDriverState) graph_bdrv_states =
     QTAILQ_HEAD_INITIALIZER(graph_bdrv_states);
 
+/* Protected by BQL */
+static QTAILQ_HEAD(, BlockDriverState) all_bdrv_states =
+    QTAILQ_HEAD_INITIALIZER(all_bdrv_states);
 ```
 
-具有 `node-name` 的 bs 链表，在 `all_bdrv_states ` 不一定会在 `graph_bdrv_states`，通过 `qmp_blockdev_add()` 创建的具名 `node` 才会在 `graph_bdrv_states` 中。
+通过 `qmp_blockdev_add()` 创建的具名 `node` 才会在 `graph_bdrv_states` 中。
+而所有的 `bdrv` 对象都会在 `all_bdrv_states` 对象中。
 
 >? 与传统 block 层相比，现代的 block layer 称 bs 为 `bdrv_node`, 而称传统的 bs 为 `bdrv_state`
 
-#### 1.1 `bdrv_open_inherit()`
+### 2、 `bdrv_open_inherit()` 创建 `bs` 对象
 
 `bdrv_open_inherit()` 是创建 bds 的主要方式，我们这里解析此函数的详细流程。
 
@@ -61,10 +65,8 @@ static QTAILQ_HEAD(, BlockDriverState) graph_bdrv_states =
 ```c
 qmp_blockdev_add(options)
   bds_tree_init(options)
-    bdrv_open(options, BDRV_O_INACTIVE)
-      bdrv_open_inherit(options, BDRV_O_INACTIVE)
-    	bs = bdrv_new();
-        bdrv_fill_options(options, BDRV_O_INACTIVE)
+    bdrv_open(options, )
+      bdrv_open_inherit(options, parse_filename:true)
 ```
 
 此磁盘创建时 `blockdev` 的命令行如下
@@ -101,101 +103,49 @@ qmp_blockdev_add(options)
 }
 ```
 
+#### 2.1  storage 层的 `bdrv_open_inherit()`
 ```c
+第一个 bs, driver : file 的创建过程，其 options 如下，
+其余参数如下：filename:(null), reference:(null), flags:0, parent:(nil), child_class:(nil), child_role:0, parse_filename:1
+{
+    "cache.no-flush": false,
+    "node-name": "libvirt-1-storage",
+    "driver": "file",
+    "filename": "/workspace/Imgs/openEuler.qcow2",
+    "auto-read-only": true,
+    "read-only": "off",
+    "aio": "native",
+    "cache.direct": true,
+    "discard": "unmap"
+}
+
 static BlockDriverState * no_coroutine_fn
 bdrv_open_inherit(const char *filename, const char *reference, QDict *options,
                   int flags, BlockDriverState *parent,
                   const BdrvChildClass *child_class, BdrvChildRole child_role,
                   bool parse_filename, Error **errp)
 {
-    int ret;
-    BlockBackend *file = NULL;
-    BlockDriverState *bs;
-    BlockDriver *drv = NULL;
-    BdrvChild *child;
-    const char *drvname;
-    const char *backing;
-    Error *local_err = NULL;
-    QDict *snapshot_options = NULL;
-    int snapshot_flags = 0;
-
-    assert(!child_class || !flags);
-    assert(!child_class == !parent);
-    GLOBAL_STATE_CODE();
-    assert(!qemu_in_coroutine());
-
-    /* TODO We'll eventually have to take a writer lock in this function */
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
-
-    if (reference) {
-        bool options_non_empty = options ? qdict_size(options) : false;
-        qobject_unref(options);
-
-        if (filename || options_non_empty) {
-            error_setg(errp, "Cannot reference an existing block device with "
-                       "additional options or a new filename");
-            return NULL;
-        }
-
-        bs = bdrv_lookup_bs(reference, reference, errp);
-        if (!bs) {
-            return NULL;
-        }
-
-        bdrv_ref(bs);
-        return bs;
-    }
-
-    bs = bdrv_new();
-
-    /* NULL means an empty set of options */
-    if (options == NULL) {
-        options = qdict_new();
-    }
-
-    /* json: syntax counts as explicit options, as if in the QDict */
+    /* 1、创建 BS，最后返回的就是 此 */
+    BlockDriverState *bs = bdrv_new();
+    
+    /* 2、filename 有时也是 options 的一部分，这种情况下 filename 是以 "json:" 为前缀，
+     * 则将 json 内容 合并到 options 中，我们这里 filename 为 NULL, 因此这一步什么都不会做
+     */
     if (parse_filename) {
         parse_json_protocol(options, &filename, &local_err);
         if (local_err) {
             goto fail;
         }
     }
-
+	
+    /* 3、复制 options 到 bs */
     bs->explicit_options = qdict_clone_shallow(options);
-
-    if (child_class) {
-        bool parent_is_format;
-
-        if (parent->drv) {
-            parent_is_format = parent->drv->is_format;
-        } else {
-            /*
-             * parent->drv is not set yet because this node is opened for
-             * (potential) format probing.  That means that @parent is going
-             * to be a format node.
-             */
-            parent_is_format = true;
-        }
-
-        bs->inherits_from = parent;
-        child_class->inherit_options(child_role, parent_is_format,
-                                     &flags, options,
-                                     parent->open_flags, parent->options);
-    }
-
+	
+    /* 4、填充参数，这里filename, parse_filename,均为 false */
     ret = bdrv_fill_options(&options, filename, &flags, parse_filename,
                             &local_err);
-    if (ret < 0) {
-        goto fail;
-    }
 
-    /*
-     * Set the BDRV_O_RDWR and BDRV_O_ALLOW_RDWR flags.
-     * Caution: getting a boolean member of @options requires care.
-     * When @options come from -blockdev or blockdev_add, members are
-     * typed according to the QAPI schema, but when they come from
-     * -drive, they're all QString.
-     */
+    /* 5、设置 bs 的读写权限，因为我们这里 "read-only": "off"， 所以 flags 允许读写 */
     if (g_strcmp0(qdict_get_try_str(options, BDRV_OPT_READ_ONLY), "on") &&
         !qdict_get_try_bool(options, BDRV_OPT_READ_ONLY, false)) {
         flags |= (BDRV_O_RDWR | BDRV_O_ALLOW_RDWR);
@@ -203,22 +153,12 @@ bdrv_open_inherit(const char *filename, const char *reference, QDict *options,
         flags &= ~BDRV_O_RDWR;
     }
 
-    if (flags & BDRV_O_SNAPSHOT) {
-        snapshot_options = qdict_new();
-        bdrv_temp_snapshot_options(&snapshot_flags, snapshot_options,
-                                   flags, options);
-        /* Let bdrv_backing_options() override "read-only" */
-        qdict_del(options, BDRV_OPT_READ_ONLY);
-        bdrv_inherited_options(BDRV_CHILD_COW, true,
-                               &flags, options, flags, options);
-    }
-
     bs->open_flags = flags;
     bs->options = options;
+    /* 6、浅拷贝 options，当前 options 中也没有嵌套 dict / list */
     options = qdict_clone_shallow(options);
 
-    /* Find the right image format driver */
-    /* See cautionary note on accessing @options above */
+    /* 7、获取 drv, 这里 drv 为 BlockDriver bdrv_file */
     drvname = qdict_get_try_str(options, "driver");
     if (drvname) {
         drv = bdrv_find_format(drvname);
@@ -230,93 +170,34 @@ bdrv_open_inherit(const char *filename, const char *reference, QDict *options,
 
     assert(drvname || !(flags & BDRV_O_PROTOCOL));
 
-    /* See cautionary note on accessing @options above */
+    /* 8、如果 backing 字段存在，则设置  flags |= BDRV_O_NO_BACKING，并且从 options 中移除 backing  
+     * 我们现在没有快照，因此暂不考虑
+     */
     backing = qdict_get_try_str(options, "backing");
     if (qobject_to(QNull, qdict_get(options, "backing")) != NULL ||
         (backing && *backing == '\0'))
     {
-        if (backing) {
-            warn_report("Use of \"backing\": \"\" is deprecated; "
-                        "use \"backing\": null instead");
-        }
-        flags |= BDRV_O_NO_BACKING;
-        qdict_del(bs->explicit_options, "backing");
-        qdict_del(bs->options, "backing");
-        qdict_del(options, "backing");
+        ...
     }
 
-    /* Open image file without format layer. This BlockBackend is only used for
-     * probing, the block drivers will do their own bdrv_open_child() for the
-     * same BDS, which is why we put the node name back into options. */
+    /* 9、不是 BDRV_O_PROTOCOL 的情况，我们现在的 bds 是 file_bds
+     * 因此 flags & BDRV_O_PROTOCOL 为 true,暂不用考虑，在 open format-layer{qcow2}时，就会走进去了 
+     * flags 的更新是在 [4] bdrv_fill_options 中完成的 */
     if ((flags & BDRV_O_PROTOCOL) == 0) {
-        BlockDriverState *file_bs;
-
-        file_bs = bdrv_open_child_bs(filename, options, "file", bs,
-                                     &child_of_bds, BDRV_CHILD_IMAGE,
-                                     true, true, &local_err);
-        if (local_err) {
-            goto fail;
-        }
-        if (file_bs != NULL) {
-            /* Not requesting BLK_PERM_CONSISTENT_READ because we're only
-             * looking at the header to guess the image format. This works even
-             * in cases where a guest would not see a consistent state. */
-            AioContext *ctx = bdrv_get_aio_context(file_bs);
-            file = blk_new(ctx, 0, BLK_PERM_ALL);
-            blk_insert_bs(file, file_bs, &local_err);
-            bdrv_unref(file_bs);
-
-            if (local_err) {
-                goto fail;
-            }
-
-            qdict_put_str(options, "file", bdrv_get_node_name(file_bs));
-        }
+        ...
     }
 
-    /* Image format probing */
+    /* 10、在 open format layer 时才可能会执行，这里暂时不考虑 */
     bs->probed = !drv;
     if (!drv && file) {
-        ret = find_image_format(file, filename, &drv, &local_err);
-        if (ret < 0) {
-            goto fail;
-        }
-        /*
-         * This option update would logically belong in bdrv_fill_options(),
-         * but we first need to open bs->file for the probing to work, while
-         * opening bs->file already requires the (mostly) final set of options
-         * so that cache mode etc. can be inherited.
-         *
-         * Adding the driver later is somewhat ugly, but it's not an option
-         * that would ever be inherited, so it's correct. We just need to make
-         * sure to update both bs->options (which has the full effective
-         * options for bs) and options (which has file.* already removed).
-         */
-        qdict_put_str(bs->options, "driver", drv->format_name);
-        qdict_put_str(options, "driver", drv->format_name);
-    } else if (!drv) {
-        error_setg(errp, "Must specify either driver or file");
-        goto fail;
+        ...
     }
 
-    /* BDRV_O_PROTOCOL must be set iff a protocol BDS is about to be created */
-    assert(!!(flags & BDRV_O_PROTOCOL) == !!drv->protocol_name);
-    /* file must be NULL if a protocol BDS is about to be created
-     * (the inverse results in an error message from bdrv_open_common()) */
-    assert(!(flags & BDRV_O_PROTOCOL) || !file);
-
-    /* Open the image */
+    /* 11、Open the image，主要就是解析 bs 层的一些参数，更新 drv 等 */
     ret = bdrv_open_common(bs, file, options, &local_err);
-    if (ret < 0) {
-        goto fail;
-    }
 
-    if (file) {
-        blk_unref(file);
-        file = NULL;
-    }
 
-    /* If there is a backing file, use it */
+    /* 12、如果指定了 backing, 则为 bs 设置 bs->backing */
     if ((flags & BDRV_O_NO_BACKING) == 0) {
         ret = bdrv_open_backing_file(bs, options, "backing", &local_err);
         if (ret < 0) {
@@ -324,19 +205,7 @@ bdrv_open_inherit(const char *filename, const char *reference, QDict *options,
         }
     }
 
-    /* Remove all children options and references
-     * from bs->options and bs->explicit_options */
-    QLIST_FOREACH(child, &bs->children, next) {
-        char *child_key_dot;
-        child_key_dot = g_strdup_printf("%s.", child->name);
-        qdict_extract_subqdict(bs->explicit_options, NULL, child_key_dot);
-        qdict_extract_subqdict(bs->options, NULL, child_key_dot);
-        qdict_del(bs->explicit_options, child->name);
-        qdict_del(bs->options, child->name);
-        g_free(child_key_dot);
-    }
-
-    /* Check if any unknown options were used */
+    /* 13、bs->options 已经拷贝了一份，检查是否有多于的 option，Check if any unknown options were used */
     if (qdict_size(options) != 0) {
         const QDictEntry *entry = qdict_first(options);
         if (flags & BDRV_O_PROTOCOL) {
@@ -350,61 +219,91 @@ bdrv_open_inherit(const char *filename, const char *reference, QDict *options,
 
         goto close_and_fail;
     }
-
+	
+    /* 14、遍历父节点的 bs，通知他们子节点的 bs 发生了变化，一般和 cdrom 光驱有关 */
     bdrv_parent_cb_change_media(bs, true);
 
-    qobject_unref(options);
-    options = NULL;
+    return bs;
+```
+上述为 `bdrv_open_inherit` 的主要流程，但是有两个函数没有仔细分析，下述进行剖析：
 
-    /* For snapshot=on, create a temporary qcow2 overlay. bs points to the
-     * temporary snapshot afterwards. */
-    if (snapshot_flags) {
-        BlockDriverState *snapshot_bs;
-        snapshot_bs = bdrv_append_temp_snapshot(bs, snapshot_flags,
-                                                snapshot_options, &local_err);
-        snapshot_options = NULL;
-        if (local_err) {
-            goto close_and_fail;
-        }
-        /* We are not going to return bs but the overlay on top of it
-         * (snapshot_bs); thus, we have to drop the strong reference to bs
-         * (which we obtained by calling bdrv_new()). bs will not be deleted,
-         * though, because the overlay still has a reference to it. */
-        bdrv_unref(bs);
-        bs = snapshot_bs;
+##### 2.1.1 `bdrv_fill_options`
+
+`bdrv_fill_options` 看着好像是要填充很多 options 的样子，但其主要目的是解析 file 相关属性。
+
+函数参数为 `filename:(null), flags:0, allow_parse_filename:1`
+
+```c
+static int bdrv_fill_options(QDict **options, const char *filename,
+                             int *flags, bool allow_parse_filename,
+                             Error **errp)
+{
+    const char *drvname;
+    bool protocol = *flags & BDRV_O_PROTOCOL;
+    bool parse_filename = false;
+
+    /* 1、判断当前 bs 是否为 protocol 层，也就是是否为 storage 层
+     * 主要是根据 drv->protocol_name 来判断的，如果有，就是 protocol 层
+     */
+    drvname = qdict_get_try_str(*options, "driver");
+    if (drvname) {
+        drv = bdrv_find_format(drvname);
+        protocol = drv->protocol_name;
+    }
+    if (protocol) {
+        *flags |= BDRV_O_PROTOCOL;
+    } else {
+        *flags &= ~BDRV_O_PROTOCOL;
     }
 
-    return bs;
+    /* 2、更新 cache 模式
+     * 主要是为 options 更新 cache 的默认值
+     */
+    update_options_from_flags(*options, *flags);
 
-fail:
-    blk_unref(file);
-    qobject_unref(snapshot_options);
-    qobject_unref(bs->explicit_options);
-    qobject_unref(bs->options);
-    qobject_unref(options);
-    bs->options = NULL;
-    bs->explicit_options = NULL;
-    bdrv_unref(bs);
-    error_propagate(errp, local_err);
-    return NULL;
+    filename = qdict_get_try_str(*options, "filename");
 
-close_and_fail:
-    bdrv_unref(bs);
-    qobject_unref(snapshot_options);
-    qobject_unref(options);
-    error_propagate(errp, local_err);
-    return NULL;
+    if (!drvname && protocol) {
+        /* filename 可能是 file bs，这种情况下，driver 包括在 filename 中 */
+        if (filename) {
+            drv = bdrv_find_protocol(filename, parse_filename, errp);
+            if (!drv) {
+                return -EINVAL;
+            }
+
+            drvname = drv->format_name;
+            qdict_put_str(*options, "driver", drvname);
+        } else {
+            error_setg(errp, "Must specify either driver or file");
+            return -EINVAL;
+        }
+    }
+
+    assert(drv || !protocol);
+
+    /* Driver-specific filename parsing */
+    if (drv && drv->bdrv_parse_filename && parse_filename) {
+        drv->bdrv_parse_filename(filename, *options, &local_err);
+        if (local_err) {
+            error_propagate(errp, local_err);
+            return -EINVAL;
+        }
+
+        if (!drv->bdrv_needs_filename) {
+            qdict_del(*options, "filename");
+        }
+    }
+
+    return 0;
 }
-
 ```
 
 
 
-### 2、`all_bdrv_states` 全局链表相关 API
-```c
-/* Protected by BQL */
-static QTAILQ_HEAD(, BlockDriverState) all_bdrv_states =
-    QTAILQ_HEAD_INITIALIZER(all_bdrv_states);
-```
+##### 2.1.2 `bdrv_open_common`
 
-所有 bs 创建时（`bdrv_new()`）都会加入该链表
+
+
+#### 2.2  format 层的 `bdrv_open_inherit()`
+
+#### 2.3  快照模式下的 `bdrv_open_inherit()`
