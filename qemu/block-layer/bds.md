@@ -545,6 +545,32 @@ bdrv_open_child_bs(const char *filename, QDict *options, const char *bdref_key,
 
 ##### 2.2.2 为 format_bs 创建 child并设置 child
 
+对应 format bs，最重要的一点就是配置 `bs->file: Child`， 对于 qcow2，其堆栈如下：
+
+```c
+bdrv_child_cb_attach()
+bdrv_replace_child_noperm()
+bdrv_attach_child_common()
+bdrv_attach_child_noperm();
+bdrv_attach_child();
+bdrv_open_child_common();
+bdrv_open_file_child()
+qcow2_open()
+bdrv_open_driver()
+bdrv_open_common()
+bdrv_open_inherit()
+bdrv_open()
+bds_tree_init()
+qmp_blockdev_add()
+```
+
+对应 qcow2 , 其 file child 节点的 child_class 统一为 `child_of_bds`, child_role 如下
+
+```c
+role = parent->drv->is_filter ?
+        (BDRV_CHILD_FILTERED | BDRV_CHILD_PRIMARY) : BDRV_CHILD_IMAGE;
+```
+
 
 
 #### 2.3  快照模式下的 `bdrv_open_inherit()`
