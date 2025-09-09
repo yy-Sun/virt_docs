@@ -1,3 +1,6 @@
+* c 语言
+  * [Meson构建工具](c/meson/index)
+    * [Meson 命令](c/meson/cmd)
 * x86 CPU
   * [Intel CPU 发展历程](x86/index)
   * [实模式](x86/readmode)
